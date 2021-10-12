@@ -2,12 +2,9 @@ package blockchain
 
 import (
 	"fmt"
+	"log"
 
 	badger "github.com/dgraph-io/badger"
-)
-
-const (
-	dbPath = "./blocks"
 )
 
 type BlockChain struct {
@@ -23,15 +20,15 @@ type BlockChainIterator struct {
 func InitBlockChain() *BlockChain {
 	var lastHash []byte
 
-	db, err := badger.Open(badger.DefaultOptions("/tmp/badger"))
-	Handle(err)
+	db, err := badger.Open(badger.DefaultOptions("/blocks"))
+	Handler(err)
 
 	err = db.Update(func(txn *badger.Txn) error {
 		if _, err := txn.Get([]byte("lh")); err == badger.ErrKeyNotFound {
 			fmt.Println("No exisiting blockchain found")
 			genesis := Genesis()
 			err = txn.Set(genesis.Hash, genesis.Serialize())
-			Handle(err)
+			Handler(err)
 			err = txn.Set([]byte("lh"), genesis.Hash)
 
 			lastHash = genesis.Hash
@@ -39,13 +36,13 @@ func InitBlockChain() *BlockChain {
 			return err
 		} else {
 			item, err := txn.Get([]byte("lh"))
-			Handle(err)
+			Handler(err)
 			lastHash, err = item.ValueCopy(nil)
 			return err
 		}
 	})
 
-	Handle(err)
+	Handler(err)
 	blockchain := BlockChain{lastHash, db}
 	return &blockchain
 }
@@ -55,25 +52,25 @@ func (chain *BlockChain) AddBlock(data string) {
 
 	err := chain.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte("lh"))
-		Handle(err)
+		Handler(err)
 		lastHash, err = item.ValueCopy(nil)
 
 		return err
 	})
-	Handle(err)
+	Handler(err)
 
 	newBlock := CreateBlock(data, lastHash)
 
 	err = chain.Database.Update(func(txn *badger.Txn) error {
 		err := txn.Set(newBlock.Hash, newBlock.Serialize())
-		Handle(err)
+		Handler(err)
 		err = txn.Set([]byte("lh"), newBlock.Hash)
 
 		chain.LastHash = newBlock.Hash
 
 		return err
 	})
-	Handle(err)
+	Handler(err)
 }
 
 func (chain *BlockChain) Iterator() *BlockChainIterator {
@@ -87,14 +84,21 @@ func (iter *BlockChainIterator) Next() *Block {
 
 	err := iter.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(iter.CurrentHash)
+		Handler(err)
 		encodedBlock, err := item.ValueCopy(nil)
 		block = Deserialize(encodedBlock)
 
 		return err
 	})
-	Handle(err)
+	Handler(err)
 
 	iter.CurrentHash = block.PrevHash
 
 	return block
+}
+
+func Handler(err error) {
+	if err != nil {
+		log.Panic(err)
+	}
 }
